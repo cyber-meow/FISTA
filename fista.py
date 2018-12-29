@@ -32,12 +32,14 @@ class FISTA(ForwardBackward):
 
     def __init__(self, params, lr, proximal):
         super().__init__(params, lr, proximal)
-        self.params_now = deepcopy(params)
+        self.params_pre = deepcopy(params)
 
     def step(self, alpha):
-        super().step()
-        self.params_pre = self.params_now
+        # x_n
         self.params_now = deepcopy(self.params)
         for param_pre, param in zip(self.params_pre, self.params):
             # y_n = x_n + \alpha_n * (x_n - x_{n-1})
             param.data = param.data + alpha * (param.data - param_pre.data)
+        # x_{n+1}
+        super().step()
+        self.params_pre = self.params_now

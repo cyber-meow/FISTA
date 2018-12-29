@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 # import pywt
 
@@ -5,10 +6,17 @@ import fista
 import proximal
 
 
+def generate_mask(size, dropout=0.5):
+    mask = np.zeros(size).reshape(-1)
+    mask[:int(mask.shape[0]*dropout)] = 1
+    np.random.shuffle(mask)
+    return mask.reshape(size)
+
+
 class Inpainting(object):
 
     def __init__(self, masked_img, mask, x0=None):
-        """masked_img contains values between 0 and 1"""
+        """masked_img of values between 0 and 1"""
         self.masked_img = torch.tensor(
             masked_img, requires_grad=False, dtype=torch.float)
         self.mask = torch.tensor(
@@ -36,7 +44,7 @@ class Inpainting(object):
             optimizer = fista.FISTA([self.x], lr, proximal_op)
         for i in range(n_iters):
             optimizer.zero_grad()
-            loss = torch.sum((self.masked_img - self.mask * self.x)**2)
+            loss = torch.sum((self.masked_img - self.mask * self.x)**2)/2
             loss.backward(retain_graph=True)
             if alpha is None:
                 optimizer.step()

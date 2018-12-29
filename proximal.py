@@ -35,3 +35,12 @@ class WaveletST(object):
             x_wav[i+1] = cH, cV, cD
         x = pywt.waverec2(x_wav, self.wavelet)
         return torch.tensor(x, dtype=torch.float, requires_grad=True)
+
+
+class ProjectInf(object):
+
+    def __init__(self, lamb):
+        self.lamb = lamb
+
+    def __call__(self, x, gamma):
+        return torch.clamp(x, -self.lamb, self.lamb)
