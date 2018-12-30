@@ -27,12 +27,13 @@ class ClassifierLasso(object):
 
     def reset(self):
         self.counter = 0
+        self.n_used_samples = [0]
         self.ce_losses = []
         self.l1_losses = []
         self.test_accuracies = []
 
-    def train(self, n_iters, lr, lamb,
-              batch_size=None, alpha=None, test=False):
+    def train(self, n_iters, lr, lamb, batch_size=None,
+              alpha=None, test=False, print_interval=100):
         """train the model for a number of iterations
 
         :n_iter: integer, number of iterations to run
@@ -64,6 +65,8 @@ class ClassifierLasso(object):
             self.l1_losses.append(self.l1_loss() * lamb)
             if test:
                 self.test(update=True)
+            if self.counter % print_interval == 0:
+                self.log(test)
 
     def _train_step(self, optimizer, scheduler, batch_size, alpha):
         scheduler.step()
@@ -71,6 +74,7 @@ class ClassifierLasso(object):
         if batch_size is None:
             X = self.data
             labels = self.target
+            bs = self.data.size(0)
         else:
             if isinstance(batch_size, numbers.Number):
                 bs = batch_size
@@ -81,6 +85,7 @@ class ClassifierLasso(object):
             idxs = np.random.choice(self.data.size(0), bs)
             X = self.data[idxs]
             labels = self.target[idxs]
+        self.n_used_samples.append(self.n_used_samples[-1] + bs)
         outputs = self.model(X)
         loss = F.cross_entropy(outputs, labels)
         loss.backward()
@@ -90,6 +95,13 @@ class ClassifierLasso(object):
             optimizer.step(alpha(self.counter + 1))
         self.ce_losses.append(loss.item())
         self.counter += 1
+
+    def log(self, test):
+        print(f'Iteration {self.counter}')
+        print(f'CE Loss: {self.ce_losses[-1]}')
+        print(f'L1 Loss: {self.l1_losses[-1]}')
+        if test:
+            print(f'Test Accuracy: {self.test_accuracies[-1]*100:.2f}%')
 
     def l1_loss(self):
         res = 0
