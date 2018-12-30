@@ -1,8 +1,10 @@
 import numbers
+from copy import deepcopy
 from warnings import warn
 
 import numpy as np
-from sklearn.metrics import accuracy_score
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score, f1_score
 
 import torch
 from torch.optim.lr_scheduler import LambdaLR
@@ -31,9 +33,12 @@ class ClassifierLasso(object):
         self.ce_losses = []
         self.l1_losses = []
         self.test_accuracies = []
+        self.full_losses = []
+        self.params_his = [deepcopy(list(self.model.parameters()))]
 
     def train(self, n_iters, lr, lamb, batch_size=None,
-              alpha=None, test=False, print_interval=100):
+              alpha=None, test=False, print_interval=100,
+              store_params=False, save_full_loss=False):
         """train the model for a number of iterations
 
         :n_iter: integer, number of iterations to run
@@ -65,8 +70,16 @@ class ClassifierLasso(object):
             self.l1_losses.append(self.l1_loss() * lamb)
             if test:
                 self.test(update=True)
+            if store_params:
+                self.params_his.append(
+                    deepcopy(list(self.model.parameters())))
             if self.counter % print_interval == 0:
                 self.log(test)
+            if save_full_loss:
+                outputs = self.model(self.data)
+                full_loss = F.cross_entropy(outputs, self.target).item()
+                full_loss += self.l1_losses[-1]
+                self.full_losses.append(full_loss)
 
     def _train_step(self, optimizer, scheduler, batch_size, alpha):
         scheduler.step()
@@ -135,3 +148,67 @@ class Linear(nn.Module):
     def forward(self, x):
         x = self.fc(x)
         return x
+
+
+def compute_relative_err(params_his):
+    params_his_arr = []
+    for params in params_his:
+        params_arr = []
+        for param in params:
+            w = param.cpu().detach().numpy().reshape(-1)
+            params_arr.append(w)
+        params_his_arr.append(np.concatenate(params_arr))
+    params_his_arr = np.array(params_his_arr)
+    rel_errs = (
+        np.sum((params_his_arr - params_his_arr[-1])**2, axis=1)
+        / np.linalg.norm(params_his_arr[-1]))
+    return rel_errs
+
+
+def sparsity_f1_score(params_his):
+    f1_scores = []
+    # Suppose that we are using the linear model
+    w = params_his[-1][0].cpu().detach().numpy().reshape(-1)
+    sparse_str_final = w != 0
+    for params in params_his:
+        # Suppose that we are using the linear model
+        w = params[0].cpu().detach().numpy().reshape(-1)
+        sparse_str = w != 0
+        f1_scores.append(f1_score(sparse_str_final, sparse_str))
+    return f1_scores
+
+
+def plot_full_losses(clf, name, n_simulations, div, **kwargs):
+    n_used_samples = np.array(clf.n_used_samples)
+    n_used_samples[n_used_samples > n_simulations*div] = 0
+    n_used_samples = np.trim_zeros(n_used_samples)/div
+    full_losses = np.array(clf.full_losses)
+    full_losses -= np.min(full_losses)
+    plt.plot(
+        n_used_samples, full_losses[:len(n_used_samples)],
+        label=name, **kwargs)
+
+
+def plot_test_accuracies(clf, name, n_simulations, div, **kwargs):
+    n_used_samples = np.array(clf.n_used_samples)
+    n_used_samples[n_used_samples > n_simulations*div] = 0
+    n_used_samples = np.trim_zeros(n_used_samples)/div
+    plt.plot(
+        n_used_samples, clf.test_accuracies[:len(n_used_samples)],
+        label=name, **kwargs)
+
+
+def plot_relative_err(clf, name, n_simulations, div, **kwargs):
+    n_used_samples = np.array(clf.n_used_samples)
+    n_used_samples[n_used_samples > n_simulations*div] = 0
+    n_used_samples = np.trim_zeros(n_used_samples)/div
+    rel_errs = compute_relative_err(clf.params_his)
+    plt.plot(
+        n_used_samples, rel_errs[:len(n_used_samples)],
+        label=name, **kwargs)
+
+
+def plot_sparsity_f1_scores(clf, name, div, **kwargs):
+    n_used_samples = np.array(clf.n_used_samples)[:-1]/div
+    sp_f1 = sparsity_f1_score(clf.params_his)[:-1]
+    plt.plot(n_used_samples, sp_f1, label=name, **kwargs)
