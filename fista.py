@@ -1,28 +1,35 @@
+import numpy as np
 from copy import deepcopy
 import torch.optim
 
 
 class ForwardBackward(object):
 
-    def __init__(self, params, lr, proximal):
+    def __init__(self, params, lr, proximal, regularize_idxs=None):
         """__init__
 
         :param params: the parameters to update
         :param lr: learning rate
         :param proximal: proximal operator taking in input a tensor
+        :regularize_idxs:
+            A list of integers to indicate which element of the
+            iterable `params` needs to be regularize.
+            Regularize all if `regularize_idxs` is None.
         """
-        self.params = params
-        self.lr = lr
-        self.optimizer = torch.optim.SGD(params, lr=lr)
+        self.params = list(params)
+        self.optimizer = torch.optim.SGD(self.params, lr=lr)
         self.proximal = proximal
+        self.regularize_idxs = regularize_idxs
 
     def step(self):
         self.optimizer.step()
-        for param in self.params:
+        lr = self.optimizer.param_groups[0]['lr']
+        for i, param in enumerate(self.params):
             # param.data = torch.tensor(
             #     self.proximal(param.detach().numpy(), self.lr),
             #     dtype=torch.float)
-            param.data = self.proximal(param, self.lr)
+            if self.regularize_idxs is None or i in self.regularize_idxs:
+                param.data = self.proximal(param, lr)
 
     def zero_grad(self):
         self.optimizer.zero_grad()
@@ -30,8 +37,9 @@ class ForwardBackward(object):
 
 class FISTA(ForwardBackward):
 
-    def __init__(self, params, lr, proximal):
-        super().__init__(params, lr, proximal)
+    def __init__(self, params, lr, proximal, regularize_idxs=None):
+        params = list(params)
+        super().__init__(params, lr, proximal, regularize_idxs)
         self.params_pre = deepcopy(params)
 
     def step(self, alpha):
@@ -43,3 +51,28 @@ class FISTA(ForwardBackward):
         # x_{n+1}
         super().step()
         self.params_pre = self.params_now
+
+
+class AlphaClassic(object):
+
+    def __init__(self):
+        self.ts = [1]
+
+    @staticmethod
+    def rec_formula(t):
+        return np.sqrt(t**2+1/4)+1/2
+
+    def __call__(self, n):
+        if n > len(self.ts):
+            for _ in range(n-self.ts):
+                self.ts.append(self.rec_formula(self.ts[-1]))
+        return self.ts[n-1]
+
+
+class Alpha(object):
+
+    def __init__(self, a):
+        self.a = a
+
+    def __call__(self, n):
+        return (n-1)/(n+self.a)

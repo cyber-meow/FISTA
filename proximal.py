@@ -14,8 +14,10 @@ class SoftThresholding(object):
 
     def __call__(self, x, gamma):
         th = self.lamb * gamma
-        x = soft_thresholding(x.detach().numpy(), th)
-        return torch.tensor(x, dtype=torch.float, requires_grad=True)
+        device = 'cuda' if x.is_cuda else 'cpu'
+        x = soft_thresholding(x.cpu().detach().numpy(), th)
+        x = torch.tensor(x, dtype=torch.float, requires_grad=True).to(device)
+        return x
 
 
 class WaveletST(object):

@@ -35,7 +35,7 @@ class TVDenoising(object):
             optimizer = fista.ForwardBackward([self.p], lr, proximal_op)
         else:
             optimizer = fista.FISTA([self.p], lr, proximal_op)
-        for i in range(n_iters):
+        for _ in range(n_iters):
             optimizer.zero_grad()
             loss = torch.sum(
                 (self.noisy_img + divergence(self.p))**2)/2
