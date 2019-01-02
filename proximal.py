@@ -28,7 +28,8 @@ class WaveletST(object):
 
     def __call__(self, x, gamma):
         th = self.lamb * gamma
-        x_wav = pywt.wavedec2(x.detach().numpy(), self.wavelet)
+        device = 'cuda' if x.is_cuda else 'cpu'
+        x_wav = pywt.wavedec2(x.cpu().detach().numpy(), self.wavelet)
         x_wav[0] = soft_thresholding(x_wav[0], th)
         for i, coeffs in enumerate(x_wav[1:]):
             cH = soft_thresholding(coeffs[0], th)
@@ -36,7 +37,9 @@ class WaveletST(object):
             cD = soft_thresholding(coeffs[2], th)
             x_wav[i+1] = cH, cV, cD
         x = pywt.waverec2(x_wav, self.wavelet)
-        return torch.tensor(x, dtype=torch.float, requires_grad=True)
+        return torch.tensor(
+                x, dtype=torch.float,
+                requires_grad=True).to(device)
 
 
 class ProjectInf(object):

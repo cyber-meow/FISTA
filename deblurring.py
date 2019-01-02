@@ -1,5 +1,6 @@
 import math
 import numbers
+import pywt
 import numpy as np
 
 import torch
@@ -19,20 +20,37 @@ def blur(img, kernel_size, sigma, noise_level=0):
 class Deblurring(object):
 
     def __init__(self, blurred_img, kernel_size, sigma, x0=None):
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.blurred_img = torch.tensor(
-            blurred_img, requires_grad=False, dtype=torch.float)
-        self.gaussian_blurring = GaussianSmoothing(kernel_size, sigma)
+            blurred_img,
+            requires_grad=False,
+            dtype=torch.float,
+            device=self.device)
+        self.gaussian_blurring = GaussianSmoothing(
+            kernel_size, sigma).to(self.device)
         self.reset(x0)
 
     def reset(self, x0=None):
         if x0 is not None:
             self.x = torch.tensor(
-                x0, requires_grad=True, dtype=torch.float)
+                x0, requires_grad=True,
+                dtype=torch.float, device=self.device)
         else:
-            self.x = torch.rand(self.blurred_img.shape, requires_grad=True)
+            self.x = torch.rand(
+                self.blurred_img.shape,
+                requires_grad=True, device=self.device)
         self.counter = 0
         self.x_pre = self.x.clone().detach()
         self.x_diffs = []
+        self.energies = []
+
+    def wavelet_l1(self, wavelet):
+        res = 0
+        x_wav = pywt.wavedec2(self.x.cpu().detach().numpy(), wavelet)
+        res += np.sum(np.abs(x_wav[0]))
+        for coeffs in x_wav[1:]:
+            res += np.sum(np.abs(coeffs))
+        return res
 
     def run(self, n_iters, lr, lamb, wavelet='db4', alpha=None):
         proximal_op = proximal.WaveletST(lamb, wavelet)
@@ -50,6 +68,7 @@ class Deblurring(object):
             else:
                 optimizer.step(alpha(self.counter+1))
             self.x_diffs.append(torch.sum((self.x - self.x_pre)**2).item())
+            self.energies.append(loss.item() + lamb*self.wavelet_l1(wavelet))
             self.x_pre = self.x.clone().detach()
             self.counter += 1
         return self.x

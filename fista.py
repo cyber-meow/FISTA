@@ -21,13 +21,17 @@ class ForwardBackward(object):
         self.proximal = proximal
         self.regularize_idxs = regularize_idxs
 
-    def step(self):
+    def step(self, err_level=None):
         self.optimizer.step()
         lr = self.optimizer.param_groups[0]['lr']
         for i, param in enumerate(self.params):
             # param.data = torch.tensor(
             #     self.proximal(param.detach().numpy(), self.lr),
             #     dtype=torch.float)
+            if err_level is not None:
+                err = torch.rand_like(param)
+                err /= torch.sum(err**2)
+                param.data = param.data + err * err_level * lr
             if self.regularize_idxs is None or i in self.regularize_idxs:
                 param.data = self.proximal(param, lr)
 
@@ -42,14 +46,14 @@ class FISTA(ForwardBackward):
         super().__init__(params, lr, proximal, regularize_idxs)
         self.params_pre = deepcopy(params)
 
-    def step(self, alpha):
+    def step(self, alpha, err_level=None):
         # x_n
         self.params_now = deepcopy(self.params)
         for param_pre, param in zip(self.params_pre, self.params):
             # y_n = x_n + \alpha_n * (x_n - x_{n-1})
             param.data = param.data + alpha * (param.data - param_pre.data)
         # x_{n+1}
-        super().step()
+        super().step(err_level)
         self.params_pre = self.params_now
 
 
@@ -63,10 +67,10 @@ class AlphaClassic(object):
         return np.sqrt(t**2+1/4)+1/2
 
     def __call__(self, n):
-        if n > len(self.ts):
-            for _ in range(n-self.ts):
+        if n >= len(self.ts):
+            for _ in range(n+1-len(self.ts)):
                 self.ts.append(self.rec_formula(self.ts[-1]))
-        return self.ts[n-1]
+        return (self.ts[n-1]-1)/self.ts[n]
 
 
 class Alpha(object):

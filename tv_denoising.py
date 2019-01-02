@@ -9,25 +9,27 @@ import proximal
 class TVDenoising(object):
 
     def __init__(self, noisy_img, p0=None):
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.noisy_img = torch.tensor(
-            noisy_img, requires_grad=False, dtype=torch.float)
+            noisy_img,
+            requires_grad=False,
+            dtype=torch.float,
+            device=self.device)
         self.reset(p0)
 
     def reset(self, p0=None):
         if p0 is not None:
             self.p = torch.tensor(
-                p0, requires_grad=True, dtype=torch.float)
+                p0, requires_grad=True,
+                dtype=torch.float, device=self.device)
         else:
             p_shape = list(self.noisy_img.shape) + [2]
-            self.p = torch.rand(p_shape, requires_grad=True)
+            self.p = torch.rand(
+                p_shape, requires_grad=True, device=self.device)
         self.counter = 0
         self.p_pre = self.p.clone().detach()
         self.p_diffs = []
         self.energies = []
-
-    def energy(self):
-        obj = torch.sum((self.noisy_img + divergence(self.p))**2)/2
-        return obj.item()
 
     def run(self, n_iters, lr, lamb, alpha=None):
         proximal_op = proximal.ProjectInf(lamb)
